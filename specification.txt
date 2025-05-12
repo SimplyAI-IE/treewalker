@@ -1,0 +1,81 @@
+
+A. Command-line Interface
+
+The app is a command-line tool that takes the following arguments:
+
+AccountID (string), Accounts path (directory), Database path (directory)
+
+The first step is to scan the Accounts path for all .xxa files.
+
+B. Account Definitions
+
+- Accounts are defined only in the file Accounts.xxa.
+- One account is defined per line, using the format:
+
+  +<AccountID><Options Modifiers $ % # > <Optional Caption>
+
+Examples:
+- +AcMyAccount$ This is my account → ID: AcMyAccount, Caption: This is my account
+- +AcAnotherAccount# → ID: AcAnotherAccount
+
+If a caption exists, it must be preceded by a modifier (e.g. $, #) or a space.
+
+C. Building the Target Tree
+
+- All other .xxa files (excluding Accounts.xxa) define an indented account tree.
+- A line with less indentation than the next is a parent.
+- A line with the same indentation as the previous is a sibling.
+
+The app scans all .xxa files to build a full account tree starting from the given AccountID.
+This recursively includes all children until no more branches exist.
+The resulting structure is called the TargetTree.
+
+D. Object Processing Phase
+
+After the tree is built, we move to object analysis.
+
+E. Matching Object References
+
+- .xmo files in the Database path are scanned.
+- Each object may reference an account via:
+
+  <AccountID>CfInterestCollected</AccountID>
+
+- For every AccountID in the TargetTree, search for matches in .xmo files.
+- Matches are written to a file:
+
+  AccountsWithObjectOutput.txt
+
+Each line contains:
+  <object filename> "accountID"
+
+F. Uniqueness Requirement
+
+If multiple objects output to the same account, each object must instead point to a unique account.
+
+G. Resolving Clashes (Account Cloning)
+
+1. Generate a unique identifier from the object's name:
+   - "Project X Alpha" → PXA
+   - "Blue Apple Pie" → BAP
+
+2. For each object that uses the same account:
+   - Find the original account in Accounts.xxa
+   - Copy the line
+   - Remove the first 3 characters (e.g. +Cf)
+   - Prefix with +Ac<Initials>_
+   - Resulting line:
+     +AcPXA_InterestCollected$ Interest Collected
+
+3. Add the new line to:
+   createdAccounts.txt
+
+4. In the .xmo file:
+   - Replace the original AccountID with the new one (e.g. AcPXA_InterestCollected)
+
+5. Record the relationship in:
+   updatedTree.txt
+
+Format:
++CfInterestCollected$ Interest Collected
+   +AcPXA_InterestCollected$ Interest Collected
