@@ -27,10 +27,16 @@ namespace AccountTreeApp.Services
                     var accElem = obj.Element("AccountID");
                     // var nameElem = obj.Element("Name"); // No longer needed to find the name here
 
-                    if (accElem != null && accElem.Value.Trim().Equals(originalId, StringComparison.OrdinalIgnoreCase))
+                    var existingId = accElem?.Value?.Trim();
+                    if (!string.IsNullOrWhiteSpace(existingId) &&
+                        existingId.Equals(originalId, StringComparison.OrdinalIgnoreCase))
                     {
-                        accElem.Value = newId; // newId is now the correct cloned ID passed from AccountProcessor
+                        accElem.Value = newId;
                         changed = true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Skipped update in {path}: ID '{existingId}' ≠ '{originalId}'");
                         // The following lines for objectName are removed as it's handled in AccountProcessor:
                         // if (nameElem != null)
                         //    objectName = nameElem.Value.Trim(); 

@@ -135,11 +135,11 @@ namespace AccountTreeApp.Services
 
             Console.WriteLine("Account cloning and XML update complete.");
 
-            if (databaseDir.TrimEnd('\\', '/').EndsWith("_extracted", StringComparison.OrdinalIgnoreCase))
+//             if (databaseDir.TrimEnd('\\', '/').EndsWith("_extracted", StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {
-                    Directory.Delete(databaseDir, true);
+//                     Directory.Delete(databaseDir, true);
                     Console.WriteLine($"Deleted temp folder: {databaseDir}");
                 }
                 catch (Exception ex)
