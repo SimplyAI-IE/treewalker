@@ -2,8 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq; // Required for Linq operations like FirstOrDefault
-using System.Xml.Linq; // Required for XDocument, XElement
+using System.Linq; // Added for FirstOrDefault
+using System.Xml.Linq; // Added for XDocument
 using AccountTreeApp.Models;
 
 namespace AccountTreeApp.Services
@@ -46,9 +46,15 @@ namespace AccountTreeApp.Services
             while (queue.Count > 0)
             {
                 var node = queue.Dequeue();
-                allAccounts[node.Account.Id.ToLower()] = node;
-                foreach (var child in node.Children)
-                    queue.Enqueue(child);
+                if (node != null && node.Account != null && !string.IsNullOrEmpty(node.Account.Id))
+                {
+                    allAccounts[node.Account.Id.ToLower()] = node;
+                }
+                if (node != null) // Null check for node before accessing Children
+                {
+                    foreach (var child in node.Children)
+                        queue.Enqueue(child);
+                }
             }
 
             foreach (var match in matches)
@@ -56,89 +62,74 @@ namespace AccountTreeApp.Services
                 string originalId = match.Key;
                 List<string> xmlPaths = match.Value;
 
-                if (xmlPaths.Count <= 1 || !allAccounts.ContainsKey(originalId.ToLower()))
+                if (!allAccounts.ContainsKey(originalId.ToLower())) // Check if original account exists
+                {
+                    Console.WriteLine($"Warning: Original account ID '{originalId}' not found in parsed accounts. Skipping cloning for this ID.");
+                    continue;
+                }
+
+                // Only proceed with cloning if there are multiple XML files referencing the same account.
+                // If only one XML file references the account, no cloning is needed according to typical interpretation of "uniqueness requirement".
+                // The spec says "If multiple objects output to the same account..." implying cloning is for >1.
+                if (xmlPaths.Count <= 1) 
                     continue;
 
-                var originalNode = allAccounts[originalId.ToLower()]; // Get the original node once
 
                 for (int i = 0; i < xmlPaths.Count; i++)
                 {
-                    var currentXmlPath = xmlPaths[i];
-                    string objectNameFromFile = "DefaultObjectName"; // Default if not found
+                    var originalNode = allAccounts[originalId.ToLower()];
+                    // It's crucial that originalNode.Parent is correctly populated earlier in the tree building.
+                    // If it's not, this logic might need adjustment or parent lookup.
+                    var parent = originalNode.Parent;
+                    string currentXmlPath = xmlPaths[i];
 
+                    // 1. Extract objectName from the current XML path for the originalId
+                    string objectName = "DefaultObjectName"; // Fallback
                     try
                     {
-                        // Step 1: Extract objectName from the current XML file.
-                        // This is a more robust way to get the object name for the specific object
-                        // being processed, especially if one file contains multiple objects (though
-                        // the current logic implies one relevant object per file path in this loop).
-                        var tempDoc = XDocument.Load(currentXmlPath);
-                        var objectElement = tempDoc.Descendants("Object")
-                                               .FirstOrDefault(obj => obj.Element("AccountID")?.Value.Trim().Equals(originalId, StringComparison.OrdinalIgnoreCase) ?? false);
+                        var doc = XDocument.Load(currentXmlPath);
+                        var objectElement = doc.Descendants("Object")
+                            .FirstOrDefault(obj => obj.Element("AccountID")?.Value.Trim().Equals(originalId, StringComparison.OrdinalIgnoreCase) == true);
 
                         if (objectElement != null)
                         {
-                            objectNameFromFile = objectElement.Element("Name")?.Value.Trim() ?? objectNameFromFile;
+                            objectName = objectElement.Element("Name")?.Value.Trim() ?? objectName;
                         }
                         else
                         {
-                             // If the object matching originalId is not found, log or skip.
-                             // This might happen if the XML structure is unexpected or already modified.
-                             Console.WriteLine($"Warning: Could not find object with AccountID '{originalId}' in file '{Path.GetFileName(currentXmlPath)}' to extract object name.");
-                             // Decide if you want to continue with a default name or skip this file/iteration
+                            Console.WriteLine($"Warning: Could not find object with AccountID {originalId} in {Path.GetFileName(currentXmlPath)} for object name extraction. Using fallback name: {objectName}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Warning: Error reading object name from XML file {Path.GetFileName(currentXmlPath)}. Error: {ex.Message}");
-                        // Continue with default or skip, depending on desired error handling
+                        Console.WriteLine($"Error reading object name from {Path.GetFileName(currentXmlPath)}: {ex.Message}. Using fallback name: {objectName}");
                     }
 
+                    // 2. Clone the account node using the extracted objectName
+                    var clone = _cloner.CloneAccountNode(originalNode, objectName, accountDefs);
 
-                    // Step 2: Clone the account node using the extracted objectName
-                    // Ensure originalNode is correctly scoped and represents the account to be cloned
-                    var clone = _cloner.CloneAccountNode(originalNode, objectNameFromFile, accountDefs);
+                    // 3. Update the XML file with the new clone.Account.Id
+                    // This assumes AccountClonerService.UpdateXmlFiles has been modified to:
+                    // public void UpdateXmlFiles(List<string> xmlPaths, string originalId, string newId)
+                    _cloner.UpdateXmlFiles(new List<string> { currentXmlPath }, originalId, clone.Account.Id);
                     
-                    // The parent for the clone should be the parent of the original node.
-                    var parent = originalNode.Parent;
+                    // Add the cloned node to the tree structure.
+                    // If 'parent' is null (e.g. originalNode was a root or parent not found),
+                    // the clone might need to be added to a list of new roots or handled differently.
+                    parent?.AddChild(clone); 
+                    // If parent is null, we might need to add 'clone' to the 'accountTrees' or a similar top-level collection
+                    // For now, assuming parent exists for accounts that are cloned based on typical tree structures.
 
-                    // Step 3: Now update the XML file with the correct newId from the clone
-                    // The objectName out parameter from UpdateXmlFiles might be redundant now if extracted already,
-                    // but the method signature requires it.
-                    string updatedObjectName; // To satisfy the out parameter
-                    _cloner.UpdateXmlFiles(new List<string> { currentXmlPath }, originalId, clone.Account.Id, out updatedObjectName);
 
-                    // Add the cloned node to the tree structure
-                    if (parent != null)
-                    {
-                        parent.AddChild(clone); // Add clone as a child of the original node's parent
-                    }
-                    else
-                    {
-                        // Handle case where originalNode is a root node, if necessary
-                        // For now, assume clones of non-root nodes are more common in this logic.
-                        // If originalNode could be a root, you might need to add `clone` to a list of new roots,
-                        // or handle this scenario according to application requirements.
-                        Console.WriteLine($"Warning: Original account '{originalId}' has no parent. Clone '{clone.Account.Id}' will not be added to the primary tree structure in this iteration.");
-                    }
-                    
                     _cloner.RecordCreatedAccount(clone.Account.RawLine);
 
-                    // For updatedTree.txt, record the relationship between the original node's line and the clone's line.
-                    // If the clone is effectively replacing the original for this object, 
-                    // the relationship to log could be original -> clone, or parent_of_original -> clone.
-                    // The spec G.5 implies original -> clone:
-                    // +CfInterestCollected$ Interest Collected
-                    //    +AcPXA_InterestCollected$ Interest Collected
-                    // This structure implies the original is treated as a "parent" in the log for the clone.
-                    // However, in the actual tree, the clone becomes a sibling of the original (or original is removed/replaced).
-                    // The current RecordUpdatedTreeRelationship seems to expect the *actual* parent's raw line.
-                    // If the clone is added under originalNode.Parent, then parent.Account.RawLine would be more accurate for the tree.
-                    // Let's stick to the spirit of G.5 from specification.txt by showing original as the "conceptual" parent in this specific log.
+                    // Record the relationship: original as parent, clone as child in the updatedTree.txt
+                    // This matches the specification "updatedTree.txt ... Format: +CfOriginal... \n   +AcPXA_New..."
+                    // where the original *becomes* a parent to its own clone in the context of this output.
                     _cloner.RecordUpdatedTreeRelationship(originalNode.Account.RawLine, clone.Account.RawLine);
 
 
-                    Console.WriteLine($"Cloned account {originalId} -> {clone.Account.Id} for file {Path.GetFileName(currentXmlPath)} (Object: {objectNameFromFile})");
+                    Console.WriteLine($"Cloned account {originalId} -> {clone.Account.Id} for file {Path.GetFileName(currentXmlPath)} and updated XML.");
                 }
             }
 
