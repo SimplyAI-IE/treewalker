@@ -65,6 +65,11 @@ CoMyOtherSearchAccount  -> ">CoMyOtherSearchAccount<"
 CfThisOne   -> CoThisOne does not exist -> ">CfThisOne<"
 CfThatOne   -> RvThatOne and ArThatOne do exist -> ">RvThatOne<"
 
+Objects have equations that ooutput to these accounts. Each *.xmo file with have one object inside <name> but can have many equations.
+Each equation outputs to an account that is defines in accounts.xxa.
+The object references the output account inside <AccountID> tags.
+Inside the tags you will find only [ACCOUNT TYPE][ACCOUNT ID]
+
 We have rules.
 Objects can only output to unique accounts. They should not share the same output account as other objects.
 
@@ -127,5 +132,48 @@ If an account in BrokenTree is output to by more than one object
    We replace in My First Object.xmo
    >CfHomeBuyEquityReturn< with >AcMFO_HomeBuyEquityReturn<
    We replace in My Blue apple Pie.xmo
-   >CfHomeBuyEquityReturn< with >AcBAP_HomeBuyEquityReturn<#
+   >CfHomeBuyEquityReturn< with >AcBAP_HomeBuyEquityReturn<
+   
+🔄 Sample Data Specification (Revised and Comprehensive)
+For sample data:
+Each .xmo file should represent one object only.
+Each object must contain multiple output <AccountID> entries, representing all the accounts it writes to.
+
+✅ Include:
+All Account Types
+Include at least one output for each of the following:
+An, Ac, Co, Ap, Cf, Rv, Ar
+Triplicate Structures
+Simulate cost triplicates: Co + Ap + Cf
+Simulate income triplicates: Rv + Ar + Cf
+Include:
+Full triplicates (all three types)
+Partial triplicates (e.g. Co + Cf, Rv + Cf)
+Orphaned Cf (only Cf exists; fall back to it)
+Conflict Scenarios
+Multiple .xmo files should output to the same:
+Triplicate group (e.g. all to CfForecast)
+Standard account (e.g. multiple to AnAdminCost)
+These should trigger account cloning logic
+Non-conflict Scenarios
+Some .xmo files must output only to accounts used by one object
+These should not trigger cloning
+Modifier Coverage
+Include accounts with:
+No modifiers
+Single modifiers ($, %, #)
+Multiple modifiers ($%, %#, $%#)
+Volume & Variation
+Create at least 30 .xmo files
+Each file should have 5–10 output accounts
+Use diverse object names to ensure unique identifier testing
+
+📄 Examples
+Object "Capital Project Alpha"
+Outputs to: CoSitePrep$, ApSitePrep$, CfSitePrep$, AnBuildCost, AcLocalFee
+Object "Sales Forecast FY26"
+Outputs to: RvSales$%, ArSales$%, CfSales$%, AcCommission
+Object "Operations Solo"
+Outputs to: AcInternalRevenue, AcHRCost, AnHQAdmin
+
 
