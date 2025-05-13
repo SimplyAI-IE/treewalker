@@ -7,15 +7,15 @@ class Program
     {
         if (args.Length != 3)
         {
-            Console.WriteLine("Usage: AccountTreeApp <AccountID> <AccountsDir> <DatabaseDir>");
+            Console.WriteLine("Usage: AccountTreeApp <TreePath> <AccountsPath> <DatabasePath>");
             return;
         }
 
-        string accountId = args[0];
-        string accountsDir = args[1];
-        string databaseDir = args[2];
+        string treePath = args[0];
+        string accountsPath = args[1];
+        string databasePath = args[2];
 
-        var app = new AccountProcessor();
-        app.Run(accountId, accountsDir, databaseDir);
+        var processor = new AccountProcessor();
+        processor.Run(treePath, accountsPath, databasePath);
     }
 }

@@ -22,3 +22,7 @@ bin/
 obj/
 createdAccounts.txt
 updatedTree.txt
+_extracted/*
+_extracted/object_1.xmo
+_extracted/object_2.xmo
+_extracted/object_3.xmo

@@ -1,0 +1,8 @@
++AcFFRLInterestReceived$ 111. Interest received
+   +CfInterestCollected$ Interest Collected
+      +CfIntercoLoanInterestReceipt$ Interco Loan Interest Receipt
+      +CfOtherFinancialIncome$ Other Financial Income
+      +CfInterestOnOtherFixedAssets$ Interest on Other Fixed Assets
+      +CfInterestIncome$ Interest Income
+      +CfLoanInvestmentFees$ Loan Investment Fees
+      +CfHomeBuyEquityReturn$ Home Buy Equity Return

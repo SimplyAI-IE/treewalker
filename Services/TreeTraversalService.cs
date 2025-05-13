@@ -1,5 +1,4 @@
 
-// C:\Users\Jason Cooke\Desktop\AccountTreeApp\AccountTreeApp\Services\TreeTraversalService.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,62 +8,89 @@ namespace AccountTreeApp.Services
 {
     public class TreeTraversalService
     {
-        private AccountParserService _parser = new AccountParserService();
+        private Dictionary<string, AccountNode> _indexedAccounts = new();
 
-        private Dictionary<string, List<AccountNode>> _accountIndex = new();
-
-        public void IndexAccounts(string directory)
+        public void IndexAccounts(string accountsDir)
         {
-            var trees = _parser.ParseTreeFiles(directory);
+            _indexedAccounts.Clear();
 
-            Queue<AccountNode> queue = new Queue<AccountNode>(trees);
-            while (queue.Count > 0)
+            foreach (var file in Directory.GetFiles(accountsDir, "*.xxa"))
             {
-                var node = queue.Dequeue();
-                if (!_accountIndex.ContainsKey(node.Account.Id.ToLower()))
-                    _accountIndex[node.Account.Id.ToLower()] = new List<AccountNode>();
+                var lines = File.ReadAllLines(file);
+                AccountNode? currentParent = null;
 
-                _accountIndex[node.Account.Id.ToLower()].Add(node);
-
-                foreach (var child in node.Children)
-                    queue.Enqueue(child);
-            }
-        }
-
-        public List<AccountNode> GetChildren(string accountId)
-        {
-            var result = new List<AccountNode>();
-
-            if (_accountIndex.ContainsKey(accountId.ToLower()))
-            {
-                foreach (var node in _accountIndex[accountId.ToLower()])
-                    result.AddRange(node.Children);
-            }
-
-            return result;
-        }
-
-        public Dictionary<string, List<AccountNode>> GetRecursiveChildren(string accountId)
-        {
-            var result = new Dictionary<string, List<AccountNode>>();
-            var visited = new HashSet<string>();
-
-            void Recurse(string id)
-            {
-                if (visited.Contains(id)) return;
-                visited.Add(id);
-
-                var children = GetChildren(id);
-                if (children.Count > 0)
+                foreach (var line in lines)
                 {
-                    result[id] = children;
-                    foreach (var child in children)
-                        Recurse(child.Account.Id);
+                    if (!line.StartsWith("+")) continue;
+
+                    var parts = line.Substring(1).Split('$');
+                    if (parts.Length < 2) continue;
+
+                    var id = parts[0].Trim();
+                    var caption = parts[1].Trim();
+
+                    var node = new AccountNode(new Account { Id = id, Caption = caption })
+            {
+                Children = new List<AccountNode>()
+            };
+
+                    if (currentParent == null)
+                    {
+                        _indexedAccounts[id] = node;
+                        currentParent = node;
+                    }
+                    else
+                    {
+                        currentParent.Children.Add(node);
+                    }
                 }
             }
+        }
 
-            Recurse(accountId);
-            return result;
+        public Dictionary<string, List<AccountNode>> GetRecursiveChildren(string rootId)
+        {
+            var results = new Dictionary<string, List<AccountNode>>();
+
+            if (_indexedAccounts.TryGetValue(rootId, out var root))
+                Traverse(root, results);
+
+            return results;
+        }
+
+        private void Traverse(AccountNode node, Dictionary<string, List<AccountNode>> results)
+        {
+            if (!results.ContainsKey(node.Account.Id))
+                results[node.Account.Id] = new List<AccountNode>();
+
+            foreach (var child in node.Children)
+            {
+                results[node.Account.Id].Add(child);
+                Traverse(child, results);
+            }
+        }
+
+        public AccountNode? FindAccountNode(string accountId)
+        {
+            foreach (var tree in _indexedAccounts.Values)
+            {
+                var found = FindNodeRecursive(tree, accountId);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private AccountNode? FindNodeRecursive(AccountNode node, string id)
+        {
+            if (node.Account.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+                return node;
+
+            foreach (var child in node.Children)
+            {
+                var found = FindNodeRecursive(child, id);
+                if (found != null) return found;
+            }
+
+            return null;
         }
     }
 }
