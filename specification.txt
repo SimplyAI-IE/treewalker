@@ -70,6 +70,10 @@ Each equation outputs to an account that is defines in accounts.xxa.
 The object references the output account inside <AccountID> tags.
 Inside the tags you will find only [ACCOUNT TYPE][ACCOUNT ID]
 
+Sadly, our accounts file is poorly mananaged and somtimes accounts are replicated.
+It is always the first instance of an account that is the owner of the [ACCOUNT TYPE][ACCOUNT ID].
+Any other instances after that are ignored.
+
 We have rules.
 Objects can only output to unique accounts. They should not share the same output account as other objects.
 
