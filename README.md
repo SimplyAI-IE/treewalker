@@ -1,49 +1,75 @@
-
 # AccountTreeApp
 
 AccountTreeApp is a C# command-line tool that:
+- Parses accounts from `.xxa` (hierarchical definitions)
+- Scans `.xmo` objects for equations that output to accounts
+- Clones shared accounts using per-object initials
+- Detects and respects cash-flow triplicates (`Co+Ap+Cf`, `Rv+Ar+Cf`)
+- Updates `<AccountID>` in `.xmo` files
+- Outputs an updated account tree and log
 
-- Parses account definitions and hierarchical structures from `.xxa` files
-- Builds a tree based on a given account root
-- Matches object usage in `.xmo` files
-- Resolves duplicate usage by cloning accounts with unique identifiers
-- Updates XML, logs all changes
+---
 
-## How to Run
+## How It Works
 
-```
-dotnet run --project AccountTreeApp.csproj <AccountID> <AccountsDir> <DatabaseDir>
-```
+### Account Definitions (`Accounts.xxa`)
+- Each account starts with `+` or `-`
+- Format: `[Type][AccountId][Modifiers] [Caption]`
+- Only the **first definition** of each `[Type][AccountId]` is valid — others are ignored
 
+### Conflict Rules
+- Objects must not share output accounts
+- When multiple objects output to the same `[Type][AccountId]`, it is cloned as:
++Ac<Initials>_<AccountId> [Modifiers] [Caption]
+
+markdown
+Copy
+Edit
+
+### Triplicate Rules
+- Triplicate logic applies **only if all 3 parts exist**:
+- `Co+Ap+Cf` → Cost triplicate
+- `Rv+Ar+Cf` → Income triplicate
+- Tree output includes only: `Cf`, `Co`, `Rv` as parents
+
+---
+
+## Usage
+
+```bash
+dotnet run --project AccountTreeApp.csproj <TreeFile> <AccountsDir> <DatabaseDir>
 Example:
 
-```
-dotnet run --project AccountTreeApp.csproj AcFFRLInterestReceived "SampleData/Test COA" "_extracted"
-```
+bash
+Copy
+Edit
+dotnet run --project AccountTreeApp.csproj tree.txt AccountsDir _extracted
+Outputs
+createdAccounts.txt – all cloned accounts
 
-Use F5 in VS Code to automatically extract `.zip` test data to `_extracted/`.
+updatedTree.txt – tree of original → clones
 
----
+processing.log – log of all replacements and decisions
 
-## Outputs
+Updated .xmo files with <AccountID> rewritten
 
-- **createdAccounts.txt**: newly generated account definitions (clones)
-- **updatedTree.txt**: parent-child relationships (original → clone)
-- **AccountsWithObjectOutput.txt**: matched `.xmo` files with object account references
-- **.xmo XML files**: updated `<AccountID>` fields
+Test Data Format
+Each .xmo file contains one <Object> with <Name> and many <AccountID> tags
 
----
+All <AccountID>s use [Type][AccountId] (no modifiers)
 
-## Folder Structure
+Tree Structure Example
+text
+Copy
+Edit
++CfInterestCollected$ Interest Collected
+   +AcOBJ_InterestCollected$ Interest Collected
++RvInterestCollected$ Interest Collected
+   +AcOBJ_InterestCollected$ Interest Collected
+Triplicate Decision Logic
+A triplicate is valid if:
 
-- `/docs/` – specifications and reference examples
-- `/SampleData/` – input `.xxa` and `.xmo` files for testing
-- `createdAccounts.txt`, `updatedTree.txt` – output logs
+All required [Type][AccountId] combinations exist as first definitions
 
----
+If any required part is a duplicate, the triplicate is invalid
 
-## Developer Notes
-
-- Clone logic derives from object name initials (e.g., "Project X Alpha" → `PXA`)
-- Tree is built fully from all children recursively starting at the root
-- Updated files are cleaned and rewritten automatically
