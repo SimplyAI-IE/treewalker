@@ -65,7 +65,7 @@ CoMyOtherSearchAccount  -> ">CoMyOtherSearchAccount<"
 CfThisOne   -> CoThisOne does not exist -> ">CfThisOne<"
 CfThatOne   -> RvThatOne and ArThatOne do exist -> ">RvThatOne<"
 
-Objects have equations that ooutput to these accounts. Each *.xmo file with have one object inside <name> but can have many equations.
+Objects have equations that output to these accounts. Each *.xmo file with have one object inside <name> but can have many equations.
 Each equation outputs to an account that is defines in accounts.xxa.
 The object references the output account inside <AccountID> tags.
 Inside the tags you will find only [ACCOUNT TYPE][ACCOUNT ID]
@@ -97,8 +97,9 @@ If an account in BrokenTree is output to by more than one object
          The original non unique account as parent.
          The new object specific account as a child.
          IF the original non unique account was a triplicate account
-            also append original non unique Co or Rv account as parent
-            The new object specific account as a child.
+            We must also append to updatedTree.txt with either the Co, Rv or Cf version of the account, depending on which we have already defined
+            The new object specific account as a child of that account.
+         (Basically if it is a triplicate the cloned account must be a child of (Rv & Cf) or (Co & Cf))
 
    Example
    AnMySearchAccount is used by My First Object & Blue apple Pie
@@ -180,4 +181,8 @@ Outputs to: RvSales$%, ArSales$%, CfSales$%, AcCommission
 Object "Operations Solo"
 Outputs to: AcInternalRevenue, AcHRCost, AnHQAdmin
 
-
+1. 🗂 File Role Definitions
+- tree.txt: Input. Contains the initial hierarchical account structure.
+- Accounts.xxa: Updated output file. New cloned accounts are appended here.
+- .xmo files: Input/output. Updated with cloned account references.
+- updatedTree.txt: Output. Shows the new structure with original accounts as parents, cloned accounts as children.
