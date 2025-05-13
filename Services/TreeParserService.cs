@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,11 +19,13 @@ namespace AccountTreeApp.Services
 
                 int indent = line.TakeWhile(c => c == ' ').Count();
                 string cleanLine = line.Trim();
-                string accountId = cleanLine.Substring(1).Split('$')[0].Trim();
+
+                // Improved parsing: handles $ % # modifiers and ensures AccountId is clean
+                string raw = cleanLine.Substring(1).Split(' ', 2)[0]; // +AcMyId$ → AcMyId$
+                string accountId = raw.Substring(2).Trim('$', '%', '#');
 
                 if (indent > lastIndent)
                 {
-                    // child of last
                     if (parentStack.Count > 0)
                     {
                         var parent = parentStack.Peek();

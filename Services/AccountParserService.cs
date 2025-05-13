@@ -1,5 +1,3 @@
-
-// C:\Users\Jason Cooke\Desktop\AccountTreeApp\AccountTreeApp\Services\AccountParserService.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,76 +14,42 @@ namespace AccountTreeApp.Services
 
             foreach (var line in File.ReadAllLines(filePath))
             {
-                if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("+")) continue;
+                if (string.IsNullOrWhiteSpace(line) || !(line.StartsWith("+") || line.StartsWith("-")))
+                    continue;
 
-                string trimmed = line.Substring(1);
-                var parts = trimmed.Split('$');
-                string id = parts[0].Trim();
-                string caption = parts.Length > 1 ? parts[1].Trim() : "";
+                string trimmed = line.Trim();
+                string direction = trimmed.Substring(0, 1);           // + or -
+                string afterSign = trimmed.Substring(1);
 
-                accounts[id.ToLower()] = new Account
+                // Locate where the first space (caption) starts
+                int captionStart = afterSign.IndexOf(' ');
+                string definitionPart = captionStart > -1 ? afterSign.Substring(0, captionStart) : afterSign;
+                string caption = captionStart > -1 ? afterSign.Substring(captionStart).Trim() : "";
+
+                // Extract type (first 2 chars), rest is ID+modifiers
+                string accountType = definitionPart.Substring(0, 2);
+                string idPlusMods = definitionPart.Substring(2);
+
+                // Extract modifiers (all characters from the first modifier symbol onward)
+                int modStart = idPlusMods.IndexOfAny(new[] { '$', '%', '#' });
+                string accountId = modStart >= 0 ? idPlusMods.Substring(0, modStart) : idPlusMods;
+                string modifiers = modStart >= 0 ? idPlusMods.Substring(modStart) : "";
+
+                var account = new Account
                 {
-                    Id = id,
+                    Id = definitionPart,
                     Caption = caption,
-                    RawLine = line.Trim(),
-                    Depth = 0
+                    RawLine = trimmed,
+                    Direction = direction,
+                    AccountType = accountType,
+                    AccountId = accountId,
+                    Modifiers = modifiers
                 };
+
+                accounts[account.Id.ToLower()] = account;
             }
 
             return accounts;
-        }
-
-        public List<AccountNode> ParseTreeFiles(string directory)
-        {
-            var rootNodes = new List<AccountNode>();
-            var accountStack = new Stack<(int Depth, AccountNode Node)>();
-
-            foreach (var file in Directory.GetFiles(directory, "*.xxa"))
-            {
-                if (Path.GetFileName(file).Equals("Accounts.xxa", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                foreach (var line in File.ReadAllLines(file))
-                {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-
-                    int depth = line.TakeWhile(Char.IsWhiteSpace).Count();
-                    string trimmed = line.TrimStart();
-
-                    if (trimmed.StartsWith("+"))
-                        trimmed = trimmed.Substring(1);
-
-                    string[] parts = trimmed.Split(new[] { ' ', '|' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                    string id = parts[0].Trim();
-                    string caption = parts.Length > 1 ? parts[1].Trim() : "";
-
-                    var account = new Account
-                    {
-                        Id = id,
-                        Caption = caption,
-                        RawLine = line.Trim(),
-                        Depth = depth
-                    };
-
-                    var node = new AccountNode(account);
-
-                    while (accountStack.Count > 0 && accountStack.Peek().Depth >= depth)
-                        accountStack.Pop();
-
-                    if (accountStack.Count == 0)
-                    {
-                        rootNodes.Add(node);
-                    }
-                    else
-                    {
-                        accountStack.Peek().Node.AddChild(node);
-                    }
-
-                    accountStack.Push((depth, node));
-                }
-            }
-
-            return rootNodes;
         }
     }
 }

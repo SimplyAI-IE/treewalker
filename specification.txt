@@ -1,73 +1,131 @@
+Purpose.
+We have a finance app that has n objects that have n equations that output to accounts. These accounts sit in a tree where their values feed upwards.
+Although accounts can appear in many places they are only defined in one place, in a file called accounts.xxa. 
 
-A. Command-line Interface
+This is how an account is defined in Accounts.xxa
+* Accounts have the following structure. 
+   First char is always + or - to denote RELATIONSHIP DIRECTION to parent.
+   Second and third char are ACCOUNT TYPE identifiers, typically one of an, ac, co, ap, cf, rv, ar.
+   We define optional ACCOUNT MODIFIERS before the first space in the line. These are '$' '%' '#' and appear after the account ID. There can be any number of modifiers.
+   The account may have a ACCOUNT CAPTION. Starting after the first space or account modifier, the caption runs to the end of the line.
+   The ACCOUNT ID is what remains if we remove everything else.
 
-The app is a command-line tool that takes the following arguments:
+Examples.
++AcMyFirstAccount$ My first account.
+[RELATIONSHIP DIRECTION] = +
+[ACCOUNT TYPE] = Ac
+[ACCOUNT MODIFIERS] = $
+[ACCOUNT CAPTION] = My first account.
+[ACCOUNT ID] = MyFirstAccount
 
-Source to the tree file (string), Accounts path (directory), Database path (directory)
+-CoMySecondAccount
+[RELATIONSHIP DIRECTION] = -
+[ACCOUNT TYPE] = Co
+[ACCOUNT MODIFIERS] = 
+[ACCOUNT CAPTION] = 
+[ACCOUNT ID] = MySecondAccount
 
-The first step is to scan the Accounts path for all .xxa files.
++RvMyThirdAccount#Third account
+[RELATIONSHIP DIRECTION] = +
+[ACCOUNT TYPE] = Rv
+[ACCOUNT MODIFIERS] = #
+[ACCOUNT CAPTION] = Third account
+[ACCOUNT ID] = MyThirdAccount
 
-B. Account Definitions
+* Some accounts are triplicate accounts.
+   Some accounts have cash behaviours. This means that there is a cost, which you might not pay for 6 months.
+   This means there is an amount to be paid and then finally we make the cash payment.
+   For cash imapcting accounts these have the same ACCOUNT ID and ACCOUNT MODIFIERS but different ACCOUNT TYPES.
+   For costs, the linked account types are Co, Ap, Cf. Cost, Account Payable and CashFlow.
+   For income, the linked account types are Rv, Ar, Cf. Revenue, Account Receivable and Cashflow.
 
-- Accounts are defined only in the file Accounts.xxa.
-- One account is defined per line, using the format:
+Examples.
++CoMyAccount01$ Cost of sheep  
++ApMyAccount01$ Sheep payable 
++CfMyAccount01$ Sheep paid 
 
-  +<AccountID><Optional Modifiers $ % # > <Optional Caption>
++RvMyAccountSheep$ Revenue of sheep  
++ArMyAccountSheep$ Sheep receivble 
++CfMyAccountSheep$ Sheep received
 
-Examples:
-- +AcMyAccount$ This is my account → ID: AcMyAccount, Caption: This is my account
-- +AcAnotherAccount# → ID: AcAnotherAccount
+The accounts can then be output to in objects. The best way to find if an object outputs to an account is:
+* If the account you are searching for has an [ACCOUNT TYPE] of Cf 
+   see if the triplicate Co or Rv exists 
+      if it does use the Co or Rv that you found for [ACCOUNT TYPE] and append the [ACCOUNT ID] for comparison
+      if it does not, use Cf[ACCOUNT ID] for comparison 
+* If the account you are searching for does not [ACCOUNT TYPE] of Cf 
+   Use the [ACCOUNT TYPE][ACCOUNT ID] for that account when doing a comparison.
+Take that string and place it between ><
+Search the XMO files for that string.
 
-If a caption exists, it must be preceded by a modifier (e.g. $, #) or a space.
+Examples.
+[search account] -> [What we searh the xmo files for]
+AnMySearchAccount -> ">AnMySearchAccount<"
+CoMyOtherSearchAccount  -> ">CoMyOtherSearchAccount<"
+CfThisOne   -> CoThisOne does not exist -> ">CfThisOne<"
+CfThatOne   -> RvThatOne and ArThatOne do exist -> ">RvThatOne<"
 
-C. Read the tree source. Understand the parent / child relationship
+We have rules.
+Objects can only output to unique accounts. They should not share the same output account as other objects.
 
-D. Object Processing Phase
+Sadly we have many cases where these rules have been broken. 
 
-After reading the tree, we move to object analysis.
+We need an application to fix these two issues by doing the following.
 
-E. Matching Object References
+Fixing non unique outputs.
+If an account in BrokenTree is output to by more than one object
+   For each object that has the same output account
+      Create a UNIQUE IDENTIFIER for that object by using the initials of the object name followed by _
+      Example
+      My First Object = MFO_
+      Blue apple Pie = BAP_
+      Copy the entire line of the non unique account in Accounts.xxa
+      Replace the [ACCOUNT TYPE] with Ac
+      Insert the [UNIQUE IDENTIFIER] after the Ac
+      Write this to Accounts.xxa as a new account.
+      Update the XMO, replacing all instances with the new account.
+      Append the following to updatedTree.txt
+         The original non unique account as parent.
+         The new object specific account as a child.
+         IF the original non unique account was a triplicate account
+            also append original non unique Co or Rv account as parent
+            The new object specific account as a child.
 
-- .xmo files in the Database path are scanned.
-- Each object may reference an account via:
+   Example
+   AnMySearchAccount is used by My First Object & Blue apple Pie
+   We read the definition from Accounts.xxa
+   +AnMySearchAccount% I like eggs
+   We create and add to accounts.xxa
+   +AcMFO_MySearchAccount% I like eggs
+   +AcBAP_MySearchAccount% I like eggs
+   We create and add to updatedTree.txt
+   +AnMySearchAccount% I like eggs
+      +AcMFO_MySearchAccount% I like eggs
+      +AcBAP_MySearchAccount% I like eggs
+   We replace in My First Object.xmo
+   >AnMySearchAccount< with >AcMFO_MySearchAccount<
+   We replace in My Blue apple Pie.xmo
+   >AnMySearchAccount< with >AcBAP_MySearchAccount<
 
-  <AccountID>CfInterestCollected</AccountID>
+   Example 2
+   CfHomeBuyEquityReturn is used by My First Object & Blue apple Pie
+   We read the definition from Accounts.xxa
+   +CfHomeBuyEquityReturn$ Home buy cash receivable
+   We search for CoHomeBuyEquityReturn - does not exist
+   We search for RvHomeBuyEquityReturn - exists
+   We search for ArHomeBuyEquityReturn - exists - therefore a triplicate 
+   We create and add to accounts.xxa
+   +AcMFO_HomeBuyEquityReturn$ Home buy cash receivable
+   +AcBAP_HomeBuyEquityReturn$ Home buy cash receivable
+   We create and add to updatedTree.txt
+   +CfHomeBuyEquityReturn$ Home buy cash receivable
+      +AcMFO_HomeBuyEquityReturn$ Home buy cash receivable
+      +AcBAP_HomeBuyEquityReturn$ Home buy cash receivable
+   +RvHomeBuyEquityReturn$ Home buy cash receivable
+      +AcMFO_HomeBuyEquityReturn$ Home buy cash receivable
+      +AcBAP_HomeBuyEquityReturn$ Home buy cash receivable
+   We replace in My First Object.xmo
+   >CfHomeBuyEquityReturn< with >AcMFO_HomeBuyEquityReturn<
+   We replace in My Blue apple Pie.xmo
+   >CfHomeBuyEquityReturn< with >AcBAP_HomeBuyEquityReturn<#
 
-- For every AccountID in the Tree Soure, search for matches in .xmo files.
-- Matches are written to a file:
-
-  AccountsWithObjectOutput.txt
-
-Each line contains:
-  <object filename> "accountID"
-
-F. Uniqueness Requirement
-
-If multiple objects output to the same account, each object must instead point to a unique account.
-
-G. Resolving Clashes (Account Cloning)
-
-1. Generate a unique identifier from the object's name:
-   - "Project X Alpha" → PXA
-   - "Blue Apple Pie" → BAP
-
-2. For each object that uses the same account:
-   - Find the original account in Accounts.xxa
-   - Copy the line
-   - Remove the first 3 characters (e.g. +Cf)
-   - Prefix with +Ac<Initials>_
-   - Resulting line:
-     +AcPXA_InterestCollected$ Interest Collected
-
-3. Add the new line to:
-   createdAccounts.txt
-
-4. In the .xmo file:
-   - Replace the original AccountID with the new one (e.g. AcPXA_InterestCollected)
-
-5. Record the relationship in:
-   updatedTree.txt
-
-Format:
-+CfInterestCollected$ Interest Collected
-   +AcPXA_InterestCollected$ Interest Collected
