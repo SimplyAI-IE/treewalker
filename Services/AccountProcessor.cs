@@ -71,21 +71,16 @@ private void LoadTreeAccounts(string treePath)
         string groupKey = id + mods;
         treeAccounts.Add(type + id);
 
+        // Always add all types in the triplicate group
         if (triplicates.TryGetValue(groupKey, out var parts))
         {
-            if (type == "Cf")
+            foreach (var partType in parts.Keys)
             {
-                if (parts.ContainsKey("Rv")) treeAccounts.Add("Rv" + id);
-                if (parts.ContainsKey("Co")) treeAccounts.Add("Co" + id);
-            }
-            else if (type == "Rv" || type == "Co")
-            {
-                if (parts.ContainsKey("Cf")) treeAccounts.Add("Cf" + id);
+                treeAccounts.Add(partType + id);
             }
         }
     }
 }
-
 
 
 
@@ -116,8 +111,13 @@ private void ScanXmoUsage(string dir)
 
         foreach (var acc in accountNames)
         {
-            string key = ResolveKey(acc);
-            if (!treeAccounts.Contains(key)) continue;
+            // Look for any case-insensitive match in treeAccounts
+            var match = treeAccounts.FirstOrDefault(t =>
+                string.Equals(t, acc, StringComparison.OrdinalIgnoreCase));
+
+            if (match == null) continue;
+
+            string key = ResolveKey(match); // Use the exact casing from treeAccounts
 
             if (!usageMap.ContainsKey(key))
                 usageMap[key] = new();
@@ -126,6 +126,7 @@ private void ScanXmoUsage(string dir)
         }
     }
 }
+
 
 
 private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
@@ -259,7 +260,7 @@ void WriteTreeRelation(string parentLine, string childLine)
             foreach (var tag in accountTags)
             {
                 var tagValue = tag.Value.Trim();
-                if (ResolveKey(tagValue) == key)
+                if (string.Equals(ResolveKey(tagValue), key, StringComparison.OrdinalIgnoreCase))
                 {
                     string pattern = $">{Regex.Escape(tagValue)}<";
                     string replacement = $">{newId}<";
@@ -284,17 +285,27 @@ void WriteTreeRelation(string parentLine, string childLine)
 
 
 
-        private string ResolveKey(string raw)
+private string ResolveKey(string raw)
+{
+    raw = raw.Trim();
+    if (raw.Length < 3) return raw;
+
+    string type = raw.Substring(0, 2);
+    string id = raw.Substring(2);
+
+    if (type.Equals("Cf", StringComparison.OrdinalIgnoreCase))
+    {
+        foreach (var t in new[] { "Co", "Rv" })
         {
-            if (raw.StartsWith("Cf"))
-            {
-                string id = raw[2..];
-                foreach (var type in new[] { "Co", "Rv" })
-                    if (firstDefinitions.ContainsKey(type + id))
-                        return type + id;
-            }
-            return raw;
+            string candidate = t + id;
+            if (firstDefinitions.Keys.Any(k => string.Equals(k, candidate, StringComparison.OrdinalIgnoreCase)))
+                return candidate;
         }
+    }
+
+    return raw;
+}
+
 
         private bool IsTriplicateType(string type) => type is "Cf" or "Co" or "Ap" or "Rv" or "Ar";
 
