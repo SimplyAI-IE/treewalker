@@ -175,7 +175,10 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
 
         foreach (var obj in objects)
         {
-            string initials = string.Concat(obj.Split(' ').Select(w => w[0])).ToUpper();
+            string initials = string.Concat(
+            Regex.Split(obj.Replace("-", " "), @"\s+")
+                .Where(w => !string.IsNullOrWhiteSpace(w))
+                .Select(w => char.ToUpper(w[0])));
             string newId = $"Ac{initials}_{accountId}";
             string newLine = "+" + newId + origLine.Substring(key.Length + 1);
 
@@ -189,6 +192,7 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
             if (triplicates.TryGetValue(groupKey, out var trio))
             {
                 string type = key.Substring(0, 2);
+
                 if (type == "Cf")
                 {
                     if (trio.TryGetValue("Rv", out var rvLine))
@@ -196,13 +200,14 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                         WriteTreeRelation(rvLine, newLine);
                         logWriter.WriteLine($"[TREE] Added {newId} under Rv (triplicate)");
                     }
-                    else if (trio.TryGetValue("Co", out var coLine))
+                    if (trio.TryGetValue("Co", out var coLine))
                     {
                         WriteTreeRelation(coLine, newLine);
                         logWriter.WriteLine($"[TREE] Added {newId} under Co (triplicate)");
                     }
                 }
-                else if (type == "Rv" || type == "Co")
+
+                if (type == "Rv" || type == "Co")
                 {
                     if (trio.TryGetValue("Cf", out var cfLine))
                     {
@@ -211,6 +216,7 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                     }
                 }
             }
+
             
 
 foreach (var objName in objects)
