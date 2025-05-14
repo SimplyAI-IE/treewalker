@@ -176,7 +176,17 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                 foreach (var file in Directory.GetFiles(xmoDir, "*.xmo"))
                 {
                     string text = File.ReadAllText(file);
-                    var doc = XDocument.Load(file);
+                    XDocument doc;
+                    try
+                    {
+                        doc = XDocument.Load(file);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERROR] Could not load XML from {file}: {ex.Message}");
+                        continue;
+                    }
+
                     var name = doc.Descendants("Name").FirstOrDefault()?.Value ?? "";
                     if (name != obj) continue;
 
