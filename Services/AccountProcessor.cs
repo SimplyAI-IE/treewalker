@@ -22,6 +22,7 @@ namespace AccountTreeApp.Services
             string updatedTreePath = Path.Combine(xmoDir, "updatedTree.txt");
 
             LoadAccounts(accountsFile);
+            LoadTreeAccounts(treePath);
             ScanXmoUsage(xmoDir);
             FixConflicts(accountsFile, xmoDir, updatedTreePath);
 
@@ -67,27 +68,40 @@ namespace AccountTreeApp.Services
 
 
 
-            private void ScanXmoUsage(string dir)
-            {
-                foreach (var file in Directory.GetFiles(dir, "*.xmo"))
-                {
-                    var doc = XDocument.Load(file);
-                    string obj = doc.Descendants("Name").FirstOrDefault()?.Value ?? "Unknown";
+private void ScanXmoUsage(string dir)
+{
+    foreach (var file in Directory.GetFiles(dir, "*.xmo"))
+    {
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Load(file);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Could not load XML from {file}: {ex.Message}");
+            continue;
+        }
 
-                    var accountNames = doc.Descendants("Account")
-                                        .Elements("Name")
-                                        .Select(x => x.Value.Trim());
+        string obj = doc.Descendants("Name").FirstOrDefault()?.Value ?? "Unknown";
 
-                    foreach (var acc in accountNames)
-                    {
-                        string key = ResolveKey(acc);
-                        if (!usageMap.ContainsKey(key))
-                            usageMap[key] = new();
-                        if (!usageMap[key].Contains(obj))
-                            usageMap[key].Add(obj);
-                    }
-                }
-            }
+        var accountNames = doc.Descendants("Account")
+                              .Elements("Name")
+                              .Select(x => x.Value.Trim());
+
+        foreach (var acc in accountNames)
+        {
+            string key = ResolveKey(acc);
+            if (!treeAccounts.Contains(key)) continue;
+
+            if (!usageMap.ContainsKey(key))
+                usageMap[key] = new();
+            if (!usageMap[key].Contains(obj))
+                usageMap[key].Add(obj);
+        }
+    }
+}
+
 
 
 private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
@@ -172,50 +186,62 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                     }
                 }
             }
+            
 
-                foreach (var file in Directory.GetFiles(xmoDir, "*.xmo"))
-                {
-                    string text = File.ReadAllText(file);
-                    XDocument doc;
-                    try
-                    {
-                        doc = XDocument.Load(file);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[ERROR] Could not load XML from {file}: {ex.Message}");
-                        continue;
-                    }
-
-                    var name = doc.Descendants("Name").FirstOrDefault()?.Value ?? "";
-                    if (name != obj) continue;
-
-                    // Count how many replacements we make for logging
-                    int replaceCount = 0;
-
-                    var accountTags = doc.Descendants("Account").Elements("Name");
-                    foreach (var tag in accountTags)
-                    {
-                        if (ResolveKey(tag.Value.Trim()) == key)
+foreach (var objName in objects)
+{
+    var file = Directory.GetFiles(xmoDir, "*.xmo")
+                        .FirstOrDefault(f =>
                         {
-                            string pattern = $">{Regex.Escape(tag.Value)}<";
-                            string replacement = $">{newId}<";
-                            int before = text.Length;
-                            text = Regex.Replace(text, pattern, replacement);
-                            if (text.Length != before)
+                            try
                             {
-                                replaceCount++;
-                                logWriter.WriteLine($"[REWRITE] {key} → {newId} in {Path.GetFileName(file)}");
+                                var d = XDocument.Load(f);
+                                return d.Descendants("Name").FirstOrDefault()?.Value?.Trim() == objName;
                             }
-                        }
-                    }
+                            catch { return false; }
+                        });
 
-                    if (replaceCount > 0)
-                    {
-                        File.WriteAllText(file, text, new System.Text.UTF8Encoding(false));
+    if (string.IsNullOrEmpty(file)) continue;
 
-                    }
-                }
+    string text = File.ReadAllText(file);
+    XDocument doc;
+    try
+    {
+        doc = XDocument.Load(file);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] Could not load XML from {file}: {ex.Message}");
+        continue;
+    }
+
+    int replaceCount = 0;
+    var accountTags = doc.Descendants("Account").Elements("Name");
+    foreach (var tag in accountTags)
+    {
+        var tagValue = tag.Value.Trim();
+        if (ResolveKey(tagValue) == key)
+        {
+            string pattern = $">{Regex.Escape(tagValue)}<";
+            string replacement = $">{newId}<";
+            string updatedText = Regex.Replace(text, pattern, replacement);
+
+            if (!ReferenceEquals(updatedText, text))
+            {
+                text = updatedText;
+                replaceCount++;
+                logWriter.WriteLine($"[REWRITE] {key} → {newId} in {Path.GetFileName(file)}");
+            }
+        }
+    }
+
+    if (replaceCount > 0)
+    {
+        File.WriteAllText(file, text, new System.Text.UTF8Encoding(false));
+    }
+}
+
+
         }
     }
 }
