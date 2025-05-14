@@ -161,9 +161,16 @@ If an account in BrokenTree is output to by more than one object
    >CfHomeBuyEquityReturn< with >AcBAP_HomeBuyEquityReturn<
    
 🔄 Sample Data Specification (Revised and Comprehensive)
-For sample data:
 Each .xmo file should represent one object only.
 Each object must contain multiple output <AccountID> entries, representing all the accounts it writes to.
+All objects must have XML delaration on line 1 only of <?xml version="1.0" encoding="utf-8"?>
+All objects must have a name of 2-4 relevant random words
+Sample objects should only use accounts that exist in accounts.xxa
+Some objects should have multiple calculations, therefore multiple accounts.
+Ensure multiple clashes exist in the sample data.
+Ensure there are some accounts of Co, rv, Cf, Ac that do not clash.
+Ensure there are some accounts of Co, rv, Cf, Ac that do clash.
+The xmo files must be valid XML. Do not use self-closing XML elements.
 
 ✅ Include:
 All Account Types
@@ -198,12 +205,6 @@ Do not assign Ap (Accounts Payable) or Ar (Accounts Receivable) to any .xmo obje
 These are part of the triplicate structure (Co+Ap+Cf or Rv+Ar+Cf) but:
 Are never directly used by objects
 Are only inferred for triplicate validation
-
-Sample objects should only use accounts that exist in accounts.xxa
-Some objects should have multiple calculations, therefore multiple accounts.
-Ensure multiple clashes exist in the sample data.
-Ensure there are some accounts of Co, rv, Cf, Ac that do not clash.
-Ensure there are some accounts of Co, rv, Cf, Ac that do clash.
 
 📄 Examples
 Object "Capital Project Alpha"

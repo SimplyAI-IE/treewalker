@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace AccountTreeApp.Services
@@ -48,133 +49,152 @@ namespace AccountTreeApp.Services
             }
         }
 
-        private void ScanXmoUsage(string dir)
-        {
-            foreach (var file in Directory.GetFiles(dir, "*.xmo"))
+            private void ScanXmoUsage(string dir)
             {
-                var doc = XDocument.Load(file);
-                string obj = doc.Descendants("Name").FirstOrDefault()?.Value ?? "Unknown";
-
-                var accountNames = doc.Descendants("Account")
-                                    .Elements("Name")
-                                    .Select(x => x.Value.Trim());
-
-                foreach (var acc in accountNames)
+                foreach (var file in Directory.GetFiles(dir, "*.xmo"))
                 {
-                    string key = ResolveKey(acc);
-                    if (!usageMap.ContainsKey(key))
-                        usageMap[key] = new();
-                    if (!usageMap[key].Contains(obj))
-                        usageMap[key].Add(obj);
+                    var doc = XDocument.Load(file);
+                    string obj = doc.Descendants("Name").FirstOrDefault()?.Value ?? "Unknown";
+
+                    var accountNames = doc.Descendants("Account")
+                                        .Elements("Name")
+                                        .Select(x => x.Value.Trim());
+
+                    foreach (var acc in accountNames)
+                    {
+                        string key = ResolveKey(acc);
+                        if (!usageMap.ContainsKey(key))
+                            usageMap[key] = new();
+                        if (!usageMap[key].Contains(obj))
+                            usageMap[key].Add(obj);
+                    }
                 }
             }
+
+
+private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
+{
+    Directory.CreateDirectory(xmoDir);
+
+    string createdAccountsPath = Path.Combine(xmoDir, "createdAccounts.txt");
+    string logPath = Path.Combine(xmoDir, "processing.log");
+
+    using var treeWriter = File.AppendText(treeFile);
+    using var accountWriter = File.AppendText(accountsFile);
+    using var createdWriter = File.AppendText(createdAccountsPath);
+    using var logWriter = File.AppendText(logPath);
+
+    var writtenTreeParents = new HashSet<string>();
+    var treeChildren = new Dictionary<string, HashSet<string>>();
+
+    void WriteTreeRelation(string parent, string child)
+    {
+        if (!writtenTreeParents.Contains(parent))
+        {
+            treeWriter.WriteLine(parent);
+            writtenTreeParents.Add(parent);
         }
 
-        private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
+        if (!treeChildren.ContainsKey(parent))
+            treeChildren[parent] = new HashSet<string>();
+
+        if (!treeChildren[parent].Contains(child))
         {
-            Directory.CreateDirectory(xmoDir);
+            treeWriter.WriteLine($"   {child}");
+            treeChildren[parent].Add(child);
+        }
+    }
 
-            string createdAccountsPath = Path.Combine(xmoDir, "createdAccounts.txt");
-            string logPath = Path.Combine(xmoDir, "processing.log");
+    foreach (var (key, objects) in usageMap)
+    {
+        if (objects.Count <= 1 || !firstDefinitions.ContainsKey(key)) continue;
 
-            using var treeWriter = File.AppendText(treeFile);
-            using var accountWriter = File.AppendText(accountsFile);
-            using var createdWriter = File.AppendText(createdAccountsPath);
-            using var logWriter = File.AppendText(logPath);
+        logWriter.WriteLine($"[CONFLICT] {key} used by: {string.Join(", ", objects)}");
 
-            var writtenTreeParents = new HashSet<string>();
-            var treeChildren = new Dictionary<string, HashSet<string>>();
+        string origLine = firstDefinitions[key];
+        string accountId = key[2..]; // drop type prefix
+        var mods = ExtractModifiers(origLine);
+        string groupKey = accountId + mods;
 
-            void WriteTreeRelation(string parent, string child)
+        foreach (var obj in objects)
+        {
+            string initials = string.Concat(obj.Split(' ').Select(w => w[0])).ToUpper();
+            string newId = $"Ac{initials}_{accountId}";
+            string newLine = "+" + newId + origLine.Substring(key.Length + 1);
+
+            accountWriter.WriteLine(newLine);
+            createdWriter.WriteLine(newLine);
+            logWriter.WriteLine($"[CLONE] {newLine} from {origLine}");
+
+            WriteTreeRelation(origLine, newLine);
+            logWriter.WriteLine($"[TREE] Added {newId} under {key}");
+
+            if (triplicates.TryGetValue(groupKey, out var trio))
             {
-                if (!writtenTreeParents.Contains(parent))
+                string type = key.Substring(0, 2);
+                if (type == "Cf")
                 {
-                    treeWriter.WriteLine(parent);
-                    writtenTreeParents.Add(parent);
+                    if (trio.TryGetValue("Rv", out var rvLine))
+                    {
+                        WriteTreeRelation(rvLine, newLine);
+                        logWriter.WriteLine($"[TREE] Added {newId} under Rv (triplicate)");
+                    }
+                    else if (trio.TryGetValue("Co", out var coLine))
+                    {
+                        WriteTreeRelation(coLine, newLine);
+                        logWriter.WriteLine($"[TREE] Added {newId} under Co (triplicate)");
+                    }
                 }
-
-                if (!treeChildren.ContainsKey(parent))
-                    treeChildren[parent] = new HashSet<string>();
-
-                if (!treeChildren[parent].Contains(child))
+                else if (type == "Rv" || type == "Co")
                 {
-                    treeWriter.WriteLine($"   {child}");
-                    treeChildren[parent].Add(child);
+                    if (trio.TryGetValue("Cf", out var cfLine))
+                    {
+                        WriteTreeRelation(cfLine, newLine);
+                        logWriter.WriteLine($"[TREE] Added {newId} under Cf (triplicate)");
+                    }
                 }
             }
 
-            foreach (var (key, objects) in usageMap)
-            {
-                if (objects.Count <= 1 || !firstDefinitions.ContainsKey(key)) continue;
-
-                logWriter.WriteLine($"[CONFLICT] {key} used by: {string.Join(", ", objects)}");
-
-                string origLine = firstDefinitions[key];
-                string accountId = key[2..];
-                var mods = ExtractModifiers(origLine);
-                string groupKey = accountId + mods;
-
-                foreach (var obj in objects)
+                foreach (var file in Directory.GetFiles(xmoDir, "*.xmo"))
                 {
-                    string initials = string.Concat(obj.Split(' ').Select(w => w[0])).ToUpper();
-                    string newId = $"Ac{initials}_{accountId}";
-                    string newLine = "+" + newId + origLine.Substring(key.Length + 1);
+                    string text = File.ReadAllText(file);
+                    var doc = XDocument.Load(file);
+                    var name = doc.Descendants("Name").FirstOrDefault()?.Value ?? "";
+                    if (name != obj) continue;
 
-                    accountWriter.WriteLine(newLine);
-                    createdWriter.WriteLine(newLine);
-                    logWriter.WriteLine($"[CLONE] {newLine} from {origLine}");
+                    // Count how many replacements we make for logging
+                    int replaceCount = 0;
 
-                    WriteTreeRelation(origLine, newLine);
-                    logWriter.WriteLine($"[TREE] Added {newId} under {key}");
-
-                    if (triplicates.TryGetValue(groupKey, out var trio))
+                    var accountTags = doc.Descendants("Account").Elements("Name");
+                    foreach (var tag in accountTags)
                     {
-                        string type = key.Substring(0, 2);
-                        if (type == "Cf")
+                        if (ResolveKey(tag.Value.Trim()) == key)
                         {
-                            if (trio.TryGetValue("Rv", out var rvLine))
+                            string pattern = $">{Regex.Escape(tag.Value)}<";
+                            string replacement = $">{newId}<";
+                            int before = text.Length;
+                            text = Regex.Replace(text, pattern, replacement);
+                            if (text.Length != before)
                             {
-                                WriteTreeRelation(rvLine, newLine);
-                                logWriter.WriteLine($"[TREE] Added {newId} under Rv (triplicate)");
-                            }
-                            else if (trio.TryGetValue("Co", out var coLine))
-                            {
-                                WriteTreeRelation(coLine, newLine);
-                                logWriter.WriteLine($"[TREE] Added {newId} under Co (triplicate)");
-                            }
-                        }
-                        else if (type == "Rv" || type == "Co")
-                        {
-                            if (trio.TryGetValue("Cf", out var cfLine))
-                            {
-                                WriteTreeRelation(cfLine, newLine);
-                                logWriter.WriteLine($"[TREE] Added {newId} under Cf (triplicate)");
-                            }
-                        }
-                    }
-
-                    foreach (var file in Directory.GetFiles(xmoDir, "*.xmo"))
-                    {
-                        var doc = XDocument.Load(file);
-                        var name = doc.Descendants("Name").FirstOrDefault()?.Value ?? "";
-                        if (name != obj) continue;
-
-                        var accountTags = doc.Descendants("Account").Elements("Name");
-                        foreach (var tag in accountTags)
-                        {
-                            if (ResolveKey(tag.Value.Trim()) == key)
-                            {
-                                tag.Value = newId;
+                                replaceCount++;
                                 logWriter.WriteLine($"[REWRITE] {key} → {newId} in {Path.GetFileName(file)}");
                             }
                         }
+                    }
 
-                        using var writer = new StreamWriter(file, false, new UTF8Encoding(false));
-                        doc.Save(writer);
+                    if (replaceCount > 0)
+                    {
+                        File.WriteAllText(file, text, new System.Text.UTF8Encoding(false));
+
                     }
                 }
-            }
         }
+    }
+}
+
+
+
+
 
         private string ResolveKey(string raw)
         {
