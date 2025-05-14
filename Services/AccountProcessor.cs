@@ -144,23 +144,26 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
     var writtenTreeParents = new HashSet<string>();
     var treeChildren = new Dictionary<string, HashSet<string>>();
 
-    void WriteTreeRelation(string parent, string child)
+    var writtenRelations = new HashSet<string>();
+
+    void WriteTreeRelation(string parentLine, string childLine)
     {
-        if (!writtenTreeParents.Contains(parent))
-        {
-            treeWriter.WriteLine(parent);
-            writtenTreeParents.Add(parent);
-        }
+        string parentKey = parentLine.Substring(1).Split(' ')[0]; // e.g., RvInterestCollected$
+        string childKey = childLine.Substring(1).Split(' ')[0];   // e.g., AcIO_InterestCollected$
+        string relationKey = parentKey + ">" + childKey;
 
-        if (!treeChildren.ContainsKey(parent))
-            treeChildren[parent] = new HashSet<string>();
-
-        if (!treeChildren[parent].Contains(child))
+        if (!writtenRelations.Contains(relationKey))
         {
-            treeWriter.WriteLine($"   {child}");
-            treeChildren[parent].Add(child);
+            if (!writtenTreeParents.Contains(parentLine))
+            {
+                treeWriter.WriteLine(parentLine);
+                writtenTreeParents.Add(parentLine);
+            }
+            treeWriter.WriteLine($"   {childLine}");
+            writtenRelations.Add(relationKey);
         }
     }
+
 
     foreach (var (key, objects) in usageMap)
     {
@@ -192,7 +195,6 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
             if (triplicates.TryGetValue(groupKey, out var trio))
             {
                 string type = key.Substring(0, 2);
-
                 if (type == "Cf")
                 {
                     if (trio.TryGetValue("Rv", out var rvLine))
@@ -200,14 +202,13 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                         WriteTreeRelation(rvLine, newLine);
                         logWriter.WriteLine($"[TREE] Added {newId} under Rv (triplicate)");
                     }
-                    if (trio.TryGetValue("Co", out var coLine))
+                    else if (trio.TryGetValue("Co", out var coLine))
                     {
                         WriteTreeRelation(coLine, newLine);
                         logWriter.WriteLine($"[TREE] Added {newId} under Co (triplicate)");
                     }
                 }
-
-                if (type == "Rv" || type == "Co")
+                else if (type == "Rv" || type == "Co")
                 {
                     if (trio.TryGetValue("Cf", out var cfLine))
                     {
@@ -216,7 +217,6 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                     }
                 }
             }
-
             
 
 foreach (var objName in objects)
