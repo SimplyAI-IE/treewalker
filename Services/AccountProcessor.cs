@@ -52,19 +52,22 @@ namespace AccountTreeApp.Services
             }
         }
 
-        private void LoadTreeAccounts(string treePath)
-        {
-            foreach (var line in File.ReadLines(treePath))
-            {
-                if (string.IsNullOrWhiteSpace(line) || line[0] != '+') continue;
-                string trimmed = line.TrimStart('+', '-').Trim();
-                var type = trimmed.Substring(0, 2);
-                int modIndex = trimmed.IndexOfAny(new[] { '$', '%', '#', '*', ' ' });
-                if (modIndex < 2) continue;
-                string id = trimmed.Substring(2, modIndex - 2);
-                treeAccounts.Add(type + id);
-            }
-        }
+private void LoadTreeAccounts(string treePath)
+{
+    foreach (var line in File.ReadLines(treePath))
+    {
+        string trimmed = line.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed[0] != '+') continue;
+
+        var type = trimmed.Substring(0, 3); // includes + prefix
+        int modIndex = trimmed.IndexOfAny(new[] { '$', '%', '#', '*', ' ' });
+        if (modIndex < 3) continue;
+
+        string id = trimmed.Substring(3, modIndex - 3);
+        treeAccounts.Add(type.Substring(1) + id);  // Type+Id, e.g. "AnAccountX"
+    }
+}
+
 
 
 
