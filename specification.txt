@@ -101,6 +101,19 @@ If an account in BrokenTree is output to by more than one object
             The new object specific account as a child of that account.
          (Basically if it is a triplicate the cloned account must be a child of (Rv & Cf) or (Co & Cf))
 
+   Clarification
+   Triplicate Cloning Rule (Final Spec-Aligned)
+   If a clone is created for a triplicate account (i.e., the original is part of a Rv+Ar+Cf or Co+Ap+Cf set):
+   Then you must add the clone as a child under both:
+   The original account (e.g., +Rv..., +Co..., or +Cf...)
+   The Cf account, if the original is Rv or Co
+   The Rv or Co account, if the original is Cf
+   🧠 Translation:
+   Original Type     Also Add Under
+   Cf	               Rv or Co
+   Rv	               Cf
+   Co	               Cf
+
    Example
    AnMySearchAccount is used by My First Object & Blue apple Pie
    We read the definition from Accounts.xxa

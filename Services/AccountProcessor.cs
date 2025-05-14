@@ -3,116 +3,176 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
-using AccountTreeApp.Models;
 
 namespace AccountTreeApp.Services
 {
     public class AccountProcessor
     {
-        private AccountParserService _accountParser = new AccountParserService();
-        private TreeParserService _treeParser = new TreeParserService();
-        private AccountClonerService _cloner = new AccountClonerService();
+        private readonly Dictionary<string, List<string>> usageMap = new();
+        private readonly Dictionary<string, string> firstDefinitions = new();
+        private readonly Dictionary<string, Dictionary<string, string>> triplicates = new();
 
-public void Run(string treePath, string accountsDir, string databaseDir)
-{
-    var tree = _treeParser.ParseTree(treePath);
-    var accountsPath = Path.Combine(accountsDir, "Accounts.xxa");
-    var accountDefs = _accountParser.ParseDefinitions(accountsPath);
-
-    var byKey = accountDefs.Values
-        .GroupBy(a => a.AccountType + a.AccountId, StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-
-    var createdAccounts = new HashSet<string>();
-    var treeMap = new Dictionary<string, List<string>>();
-    var usageMap = new Dictionary<string, List<(string file, string objectName)>>();
-
-    foreach (var file in Directory.GetFiles(databaseDir, "*.xmo"))
-    {
-        var doc = XDocument.Load(file);
-        foreach (var obj in doc.Descendants("Object"))
+        public void Run(string treePath, string accountsDir, string xmoDir)
         {
-            var idElem = obj.Element("AccountID");
-            var nameElem = obj.Element("Name");
-            if (idElem == null || nameElem == null) continue;
+            string accountsFile = Path.Combine(accountsDir, "Accounts.xxa");
+            string updatedTreePath = Path.Combine(xmoDir, "updatedTree.txt");
 
-            string accRef = idElem.Value.Trim();
-            string objectName = nameElem.Value.Trim();
+            LoadAccounts(accountsFile);
+            ScanXmoUsage(xmoDir);
+            FixConflicts(accountsFile, xmoDir, updatedTreePath);
 
-            if (!usageMap.ContainsKey(accRef))
-                usageMap[accRef] = new List<(string, string)>();
-
-            usageMap[accRef].Add((file, objectName));
+            Console.WriteLine("✅ Processing complete.");
         }
-    }
 
-    foreach (var (accRef, users) in usageMap.Where(kvp => kvp.Value.Count > 1))
-    {
-        if (!byKey.TryGetValue(accRef, out var account)) continue;
-
-        string id = account.AccountId;
-        string mods = account.Modifiers;
-
-        // Only check owner-defined parts
-        bool hasCo = byKey.TryGetValue("Co" + id, out var co) && co.Modifiers == mods;
-        bool hasAp = byKey.TryGetValue("Ap" + id, out var ap) && ap.Modifiers == mods;
-        bool hasCf = byKey.TryGetValue("Cf" + id, out var cf) && cf.Modifiers == mods;
-        bool hasRv = byKey.TryGetValue("Rv" + id, out var rv) && rv.Modifiers == mods;
-        bool hasAr = byKey.TryGetValue("Ar" + id, out var ar) && ar.Modifiers == mods;
-
-        bool isCostTriplicate = hasCo && hasAp && hasCf;
-        bool isIncomeTriplicate = hasRv && hasAr && hasCf;
-
-        var parents = new List<string> { account.RawLine };
-        if (isCostTriplicate)
-            parents = new[] { cf, co }
-                .Where(x => x != null)
-                .Select(x => x.RawLine).Distinct().ToList();
-
-        else if (isIncomeTriplicate)
-            parents = new[] { cf, rv }
-                .Where(x => x != null)
-                .Select(x => x.RawLine).Distinct().ToList();
-
-        foreach (var (file, objectName) in users)
+        private void LoadAccounts(string file)
         {
-            string initials = new string(objectName.Split().Where(w => w.Length > 0)
-                                                   .Select(w => char.ToUpper(w[0])).ToArray());
-            string newId = $"Ac{initials}_{account.AccountId}";
-            string newLine = $"+{newId}{account.Modifiers} {account.Caption}".Trim();
-
-            if (createdAccounts.Add(newLine))
-                File.AppendAllText(accountsPath, newLine + Environment.NewLine);
-
-            foreach (var parent in parents)
+            foreach (var line in File.ReadLines(file))
             {
-                if (!treeMap.ContainsKey(parent))
-                    treeMap[parent] = new List<string>();
-                treeMap[parent].Add(newLine);
+                if (string.IsNullOrWhiteSpace(line) || (line[0] != '+' && line[0] != '-')) continue;
+
+                var parts = ParseLine(line);
+                if (parts is not { } p) continue;
+
+                string key = p.Type + p.Id;
+                if (!firstDefinitions.ContainsKey(key))
+                    firstDefinitions[key] = line;
+
+                if (IsTriplicateType(p.Type))
+                {
+                    string groupKey = p.Id + p.Mods;
+                    if (!triplicates.ContainsKey(groupKey))
+                        triplicates[groupKey] = new Dictionary<string, string>();
+                    triplicates[groupKey][p.Type] = line;
+                }
+            }
+        }
+
+        private void ScanXmoUsage(string dir)
+        {
+            foreach (var file in Directory.GetFiles(dir, "*.xmo"))
+            {
+                var doc = XDocument.Load(file);
+                string obj = doc.Descendants("Name").FirstOrDefault()?.Value ?? "Unknown";
+
+                foreach (var acc in doc.Descendants("AccountID").Select(x => x.Value))
+                {
+                    string key = ResolveKey(acc);
+                    if (!usageMap.ContainsKey(key))
+                        usageMap[key] = new();
+                    if (!usageMap[key].Contains(obj))
+                        usageMap[key].Add(obj);
+                }
+            }
+        }
+
+private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
+{
+    using var treeWriter = File.AppendText(treeFile);
+    using var accountWriter = File.AppendText(accountsFile);
+
+    foreach (var (key, objects) in usageMap)
+    {
+        if (objects.Count <= 1 || !firstDefinitions.ContainsKey(key)) continue;
+
+        string origLine = firstDefinitions[key];
+        string accountId = key[2..]; // strip type like "Cf", "Rv", "Co"
+        var mods = ExtractModifiers(origLine);
+        string groupKey = accountId + mods;
+
+        foreach (var obj in objects)
+        {
+            string initials = string.Concat(obj.Split(' ').Select(w => w[0])).ToUpper();
+            string newId = $"Ac{initials}_{accountId}";
+            string newLine = "+" + newId + origLine.Substring(key.Length + 1);
+
+            accountWriter.WriteLine(newLine);
+
+            // Always add under the original account
+            treeWriter.WriteLine(origLine);
+            treeWriter.WriteLine($"   {newLine}");
+
+            // If the original is part of a triplicate
+            if (triplicates.TryGetValue(groupKey, out var trio))
+            {
+                string type = key.Substring(0, 2); // e.g. Cf, Rv, Co
+
+                if (type == "Cf")
+                {
+                    if (trio.TryGetValue("Rv", out var rvLine))
+                    {
+                        treeWriter.WriteLine(rvLine);
+                        treeWriter.WriteLine($"   {newLine}");
+                    }
+                    else if (trio.TryGetValue("Co", out var coLine))
+                    {
+                        treeWriter.WriteLine(coLine);
+                        treeWriter.WriteLine($"   {newLine}");
+                    }
+                }
+                else if (type == "Rv" || type == "Co")
+                {
+                    if (trio.TryGetValue("Cf", out var cfLine))
+                    {
+                        treeWriter.WriteLine(cfLine);
+                        treeWriter.WriteLine($"   {newLine}");
+                    }
+                }
             }
 
-            var doc = XDocument.Load(file);
-            var target = doc.Descendants("AccountID").FirstOrDefault(e => e.Value.Trim() == accRef);
-            if (target != null)
+            // Rewrite the .xmo file for the current object
+            foreach (var file in Directory.GetFiles(xmoDir, "*.xmo"))
             {
-                target.Value = newId;
+                var doc = XDocument.Load(file);
+                var name = doc.Descendants("Name").FirstOrDefault()?.Value ?? "";
+                if (name != obj) continue;
+
+                foreach (var tag in doc.Descendants("AccountID"))
+                {
+                    if (ResolveKey(tag.Value) == key)
+                        tag.Value = newId;
+                }
                 doc.Save(file);
             }
         }
     }
-
-    var updatedTree = new List<string>();
-    foreach (var parent in treeMap.Keys)
-    {
-        updatedTree.Add(parent);
-        foreach (var child in treeMap[parent].Distinct())
-            updatedTree.Add($"   {child}");
-    }
-
-    File.WriteAllLines(Path.Combine(databaseDir, "updatedTree.txt"), updatedTree);
-    Console.WriteLine("Conflicts resolved and updates written.");
 }
 
 
+        private string ResolveKey(string raw)
+        {
+            if (raw.StartsWith("Cf"))
+            {
+                string id = raw[2..];
+                foreach (var type in new[] { "Co", "Rv" })
+                    if (firstDefinitions.ContainsKey(type + id))
+                        return type + id;
+            }
+            return raw;
+        }
+
+        private bool IsTriplicateType(string type) => type is "Cf" or "Co" or "Ap" or "Rv" or "Ar";
+
+        private string ExtractModifiers(string line)
+        {
+            var m = line.IndexOfAny(new[] { '$', '%', '#', '*', ' ' }, 3);
+            if (m < 0) return "";
+            var after = line[m..].Trim();
+            return string.Concat(after.TakeWhile(c => "$%#*".Contains(c)));
+        }
+
+        private (string Dir, string Type, string Id, string Mods, string Caption)? ParseLine(string line)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length < 4) return null;
+            string dir = trimmed.Substring(0, 1);
+            string type = trimmed.Substring(1, 2);
+            int i = 3;
+            while (i < trimmed.Length && !char.IsWhiteSpace(trimmed[i]) && !"$%#*".Contains(trimmed[i])) i++;
+            string id = trimmed.Substring(3, i - 3);
+            string mods = "";
+            while (i < trimmed.Length && "$%#*".Contains(trimmed[i])) mods += trimmed[i++];
+            string cap = trimmed.Substring(i).Trim();
+            return (dir, type, id, mods, cap);
+        }
     }
 }
