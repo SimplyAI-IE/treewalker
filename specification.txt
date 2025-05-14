@@ -67,8 +67,15 @@ CfThatOne   -> RvThatOne and ArThatOne do exist -> ">RvThatOne<"
 
 Objects have equations that output to these accounts. Each *.xmo file with have one object inside <name> but can have many equations.
 Each equation outputs to an account that is defines in accounts.xxa.
-The object references the output account inside <AccountID> tags.
-Inside the tags you will find only [ACCOUNT TYPE][ACCOUNT ID]
+The object references the output account in the following way.
+Example:
+<Accounts>
+  <Account><Name>CoRevenueGrantMajorRepairsRecognition</Name></Account>
+  <Account><Name>CoRBlue</Name></Account>
+  <Account><Name>CoRGreen</Name></Account>
+</Accounts>
+There can me multiple outputs for n equations within an object.
+Inside the <Accounts><Account><Name> tags you will find only [ACCOUNT TYPE][ACCOUNT ID]
 
 Sadly, our accounts file is poorly mananaged and somtimes accounts are replicated.
 It is always the first instance of an account that is the owner of the [ACCOUNT TYPE][ACCOUNT ID].
@@ -185,6 +192,17 @@ Volume & Variation
 Create at least 30 .xmo files
 Each file should have 5–10 output accounts
 Use diverse object names to ensure unique identifier testing
+
+Do not assign Ap (Accounts Payable) or Ar (Accounts Receivable) to any .xmo object.
+These are part of the triplicate structure (Co+Ap+Cf or Rv+Ar+Cf) but:
+Are never directly used by objects
+Are only inferred for triplicate validation
+
+Sample objects should only use accounts that exist in accounts.xxa
+Some objects should have multiple calculations, therefore multiple accounts.
+Ensure multiple clashes exist in the sample data.
+Ensure there are some accounts of Co, rv, Cf, Ac that do not clash.
+Ensure there are some accounts of Co, rv, Cf, Ac that do clash.
 
 📄 Examples
 Object "Capital Project Alpha"
