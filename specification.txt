@@ -92,6 +92,8 @@ Fixing non unique outputs.
 If an account in BrokenTree is output to by more than one object
    For each object that has the same output account
       Create a UNIQUE IDENTIFIER for that object by using the initials of the object name followed by _
+      Some object have '-' in their name. We need to ensure this is not used for the unique identifier when cloning accounts. 
+      For example, 'Cash - In - Bank' shouid have the identifier CIB_
       Example
       My First Object = MFO_
       Blue apple Pie = BAP_
