@@ -67,15 +67,24 @@ namespace AccountTreeApp.Services
 
 private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
 {
+    Directory.CreateDirectory(xmoDir);
+
+    string createdAccountsPath = Path.Combine(xmoDir, "createdAccounts.txt");
+    string logPath = Path.Combine(xmoDir, "processing.log");
+
     using var treeWriter = File.AppendText(treeFile);
     using var accountWriter = File.AppendText(accountsFile);
+    using var createdWriter = File.AppendText(createdAccountsPath);
+    using var logWriter = File.AppendText(logPath);
 
     foreach (var (key, objects) in usageMap)
     {
         if (objects.Count <= 1 || !firstDefinitions.ContainsKey(key)) continue;
 
+        logWriter.WriteLine($"[CONFLICT] {key} used by: {string.Join(", ", objects)}");
+
         string origLine = firstDefinitions[key];
-        string accountId = key[2..]; // strip type like "Cf", "Rv", "Co"
+        string accountId = key[2..]; // drop type prefix
         var mods = ExtractModifiers(origLine);
         string groupKey = accountId + mods;
 
@@ -86,27 +95,29 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
             string newLine = "+" + newId + origLine.Substring(key.Length + 1);
 
             accountWriter.WriteLine(newLine);
+            createdWriter.WriteLine(newLine);
+            logWriter.WriteLine($"[CLONE] {newLine} from {origLine}");
 
-            // Always add under the original account
             treeWriter.WriteLine(origLine);
             treeWriter.WriteLine($"   {newLine}");
+            logWriter.WriteLine($"[TREE] Added {newId} under {key}");
 
-            // If the original is part of a triplicate
             if (triplicates.TryGetValue(groupKey, out var trio))
             {
-                string type = key.Substring(0, 2); // e.g. Cf, Rv, Co
-
+                string type = key.Substring(0, 2);
                 if (type == "Cf")
                 {
                     if (trio.TryGetValue("Rv", out var rvLine))
                     {
                         treeWriter.WriteLine(rvLine);
                         treeWriter.WriteLine($"   {newLine}");
+                        logWriter.WriteLine($"[TREE] Added {newId} under Rv (triplicate)");
                     }
                     else if (trio.TryGetValue("Co", out var coLine))
                     {
                         treeWriter.WriteLine(coLine);
                         treeWriter.WriteLine($"   {newLine}");
+                        logWriter.WriteLine($"[TREE] Added {newId} under Co (triplicate)");
                     }
                 }
                 else if (type == "Rv" || type == "Co")
@@ -115,11 +126,11 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                     {
                         treeWriter.WriteLine(cfLine);
                         treeWriter.WriteLine($"   {newLine}");
+                        logWriter.WriteLine($"[TREE] Added {newId} under Cf (triplicate)");
                     }
                 }
             }
 
-            // Rewrite the .xmo file for the current object
             foreach (var file in Directory.GetFiles(xmoDir, "*.xmo"))
             {
                 var doc = XDocument.Load(file);
@@ -129,13 +140,18 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                 foreach (var tag in doc.Descendants("AccountID"))
                 {
                     if (ResolveKey(tag.Value) == key)
+                    {
+                        logWriter.WriteLine($"[REWRITE] {key} → {newId} in {Path.GetFileName(file)}");
                         tag.Value = newId;
+                    }
                 }
                 doc.Save(file);
             }
         }
     }
 }
+
+
 
 
         private string ResolveKey(string raw)

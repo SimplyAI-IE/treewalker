@@ -13,40 +13,37 @@ namespace AccountTreeApp.Services
         private HashSet<string> writtenIds = new();
 
         // Updated method signature: removed 'out string objectName'
-        public void UpdateXmlFiles(List<string> xmlPaths, string originalId, string newId)
+
+public void UpdateXmlFiles(List<string> xmlPaths, string originalId, string newId)
+{
+    foreach (var path in xmlPaths)
+    {
+        var doc = XDocument.Load(path);
+        var changed = false;
+
+        foreach (var obj in doc.Descendants("Object"))
         {
-            // objectName = ""; // This line is removed
-
-            foreach (var path in xmlPaths)
+            foreach (var accElem in obj.Elements("AccountID")) // ✅ iterate safely over all <AccountID> elements
             {
-                var doc = XDocument.Load(path);
-                var changed = false;
+                var existingId = accElem.Value?.Trim(); // accElem is never null in this context
 
-                foreach (var obj in doc.Descendants("Object"))
+                if (!string.IsNullOrWhiteSpace(existingId) &&
+                    existingId.Equals(originalId, StringComparison.OrdinalIgnoreCase))
                 {
-                    var accElem = obj.Element("AccountID");
-                    // var nameElem = obj.Element("Name"); // No longer needed to find the name here
-
-                    var existingId = accElem?.Value?.Trim();
-                    if (!string.IsNullOrWhiteSpace(existingId) &&
-                        existingId.Equals(originalId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        accElem.Value = newId;
-                        changed = true;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Skipped update in {path}: ID '{existingId}' ≠ '{originalId}'");
-                        // The following lines for objectName are removed as it's handled in AccountProcessor:
-                        // if (nameElem != null)
-                        //    objectName = nameElem.Value.Trim(); 
-                    }
+                    accElem.Value = newId;
+                    changed = true;
                 }
-
-                if (changed)
-                    doc.Save(path);
+                else
+                {
+                    Console.WriteLine($"Skipped update in {path}: ID '{existingId}' ≠ '{originalId}'");
+                }
             }
         }
+
+        if (changed)
+            doc.Save(path);
+    }
+}
 
         public AccountNode CloneAccountNode(AccountNode original, string objectName, Dictionary<string, Account> definitions)
         {
@@ -114,7 +111,7 @@ namespace AccountTreeApp.Services
             });
         }
 
-        private string ExtractCaptionFromRawLine(string rawLine)
+        private string? ExtractCaptionFromRawLine(string rawLine)
         {
             var parts = rawLine.Split(new[] { '$' }, 2);
             if (parts.Length > 1)
