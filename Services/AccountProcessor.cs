@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Linq;
 using System.Xml.Linq;
 
@@ -169,7 +170,10 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                     }
                 }
 
-                doc.Save(file);
+                using (var writer = new StreamWriter(file, false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+                {
+                    doc.Save(writer);
+                }
             }
         }
     }
