@@ -100,6 +100,7 @@ If an account in BrokenTree is output to by more than one object
       Insert the [UNIQUE IDENTIFIER] after the Ac
       Write this to Accounts.xxa as a new account.
       Update the XMO, replacing all instances with the new account.
+      * it is important that the change of the account is the only change in the file. Everything else must be identical.
       Append the following to updatedTree.txt
          The original non unique account as parent.
          The new object specific account as a child.
