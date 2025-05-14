@@ -13,6 +13,8 @@ namespace AccountTreeApp.Services
         private readonly Dictionary<string, List<string>> usageMap = new();
         private readonly Dictionary<string, string> firstDefinitions = new();
         private readonly Dictionary<string, Dictionary<string, string>> triplicates = new();
+        private readonly HashSet<string> treeAccounts = new();
+
 
         public void Run(string treePath, string accountsDir, string xmoDir)
         {
@@ -48,6 +50,22 @@ namespace AccountTreeApp.Services
                 }
             }
         }
+
+        private void LoadTreeAccounts(string treePath)
+        {
+            foreach (var line in File.ReadLines(treePath))
+            {
+                if (string.IsNullOrWhiteSpace(line) || line[0] != '+') continue;
+                string trimmed = line.TrimStart('+', '-').Trim();
+                var type = trimmed.Substring(0, 2);
+                int modIndex = trimmed.IndexOfAny(new[] { '$', '%', '#', '*', ' ' });
+                if (modIndex < 2) continue;
+                string id = trimmed.Substring(2, modIndex - 2);
+                treeAccounts.Add(type + id);
+            }
+        }
+
+
 
             private void ScanXmoUsage(string dir)
             {
