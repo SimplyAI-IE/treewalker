@@ -128,7 +128,6 @@ private void ScanXmoUsage(string dir)
 }
 
 
-
 private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
 {
     Directory.CreateDirectory(xmoDir);
@@ -141,28 +140,29 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
     using var createdWriter = File.AppendText(createdAccountsPath);
     using var logWriter = File.AppendText(logPath);
 
-    var writtenTreeParents = new HashSet<string>();
-    var treeChildren = new Dictionary<string, HashSet<string>>();
+    var writtenTreeHeaders = new HashSet<string>(); // ✅ fix: keyed by Type+ID, not full line
 
     var writtenRelations = new HashSet<string>();
 
-    void WriteTreeRelation(string parentLine, string childLine)
-    {
-        string parentKey = parentLine.Substring(1).Split(' ')[0]; // e.g., RvInterestCollected$
-        string childKey = childLine.Substring(1).Split(' ')[0];   // e.g., AcIO_InterestCollected$
-        string relationKey = parentKey + ">" + childKey;
+void WriteTreeRelation(string parentLine, string childLine)
+{
+    string parentKey = parentLine.Substring(1).Split(' ')[0]; // e.g., RvInterestCollected$
+    string childKey = childLine.Substring(1).Split(' ')[0];   // e.g., AcIO_InterestCollected$
+    string relationKey = parentKey + ">" + childKey;
 
-        if (!writtenRelations.Contains(relationKey))
+    if (!writtenRelations.Contains(relationKey))
+    {
+        if (!writtenTreeHeaders.Contains(parentKey))
         {
-            if (!writtenTreeParents.Contains(parentLine))
-            {
-                treeWriter.WriteLine(parentLine);
-                writtenTreeParents.Add(parentLine);
-            }
-            treeWriter.WriteLine($"   {childLine}");
-            writtenRelations.Add(relationKey);
+            treeWriter.WriteLine(parentLine);
+            writtenTreeHeaders.Add(parentKey);
         }
+
+
+        treeWriter.WriteLine($"   {childLine}");
+        writtenRelations.Add(relationKey);
     }
+}
 
 
     foreach (var (key, objects) in usageMap)
@@ -176,14 +176,21 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
         var mods = ExtractModifiers(origLine);
         string groupKey = accountId + mods;
 
+        // Track per-object clone IDs
+        var objectToCloneId = new Dictionary<string, string>();
+
         foreach (var obj in objects)
         {
+            writtenTreeHeaders.Clear();       // 👈 RESET PER OBJECT
+            writtenRelations.Clear();         // 👈 RESET PER OBJECT
             string initials = string.Concat(
-            Regex.Split(obj.Replace("-", " "), @"\s+")
-                .Where(w => !string.IsNullOrWhiteSpace(w))
-                .Select(w => char.ToUpper(w[0])));
+                Regex.Split(obj.Replace("-", " "), @"\s+")
+                    .Where(w => !string.IsNullOrWhiteSpace(w))
+                    .Select(w => char.ToUpper(w[0])));
             string newId = $"Ac{initials}_{accountId}";
             string newLine = "+" + newId + origLine.Substring(key.Length + 1);
+
+            objectToCloneId[obj] = newId;
 
             accountWriter.WriteLine(newLine);
             createdWriter.WriteLine(newLine);
@@ -202,7 +209,7 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                         WriteTreeRelation(rvLine, newLine);
                         logWriter.WriteLine($"[TREE] Added {newId} under Rv (triplicate)");
                     }
-                    else if (trio.TryGetValue("Co", out var coLine))
+                    if (trio.TryGetValue("Co", out var coLine))
                     {
                         WriteTreeRelation(coLine, newLine);
                         logWriter.WriteLine($"[TREE] Added {newId} under Co (triplicate)");
@@ -217,67 +224,63 @@ private void FixConflicts(string accountsFile, string xmoDir, string treeFile)
                     }
                 }
             }
-            
+        }
 
-foreach (var objName in objects)
-{
-    var file = Directory.GetFiles(xmoDir, "*.xmo")
-                        .FirstOrDefault(f =>
-                        {
-                            try
-                            {
-                                var d = XDocument.Load(f);
-                                return d.Descendants("Name").FirstOrDefault()?.Value?.Trim() == objName;
-                            }
-                            catch { return false; }
-                        });
-
-    if (string.IsNullOrEmpty(file)) continue;
-
-    string text = File.ReadAllText(file);
-    XDocument doc;
-    try
-    {
-        doc = XDocument.Load(file);
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[ERROR] Could not load XML from {file}: {ex.Message}");
-        continue;
-    }
-
-    int replaceCount = 0;
-    var accountTags = doc.Descendants("Account").Elements("Name");
-    foreach (var tag in accountTags)
-    {
-        var tagValue = tag.Value.Trim();
-        if (ResolveKey(tagValue) == key)
+        // Do targeted replacement per object using their correct newId
+        foreach (var (objName, newId) in objectToCloneId)
         {
-            string pattern = $">{Regex.Escape(tagValue)}<";
-            string replacement = $">{newId}<";
-            string updatedText = Regex.Replace(text, pattern, replacement);
+            var file = Directory.GetFiles(xmoDir, "*.xmo")
+                                .FirstOrDefault(f =>
+                                {
+                                    try
+                                    {
+                                        var d = XDocument.Load(f);
+                                        return d.Descendants("Name").FirstOrDefault()?.Value?.Trim() == objName;
+                                    }
+                                    catch { return false; }
+                                });
 
-            if (!ReferenceEquals(updatedText, text))
+            if (string.IsNullOrEmpty(file)) continue;
+
+            string text = File.ReadAllText(file);
+            XDocument doc;
+            try
             {
-                text = updatedText;
-                replaceCount++;
-                logWriter.WriteLine($"[REWRITE] {key} → {newId} in {Path.GetFileName(file)}");
+                doc = XDocument.Load(file);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Could not load XML from {file}: {ex.Message}");
+                continue;
+            }
+
+            int replaceCount = 0;
+            var accountTags = doc.Descendants("Account").Elements("Name");
+            foreach (var tag in accountTags)
+            {
+                var tagValue = tag.Value.Trim();
+                if (ResolveKey(tagValue) == key)
+                {
+                    string pattern = $">{Regex.Escape(tagValue)}<";
+                    string replacement = $">{newId}<";
+                    string updatedText = Regex.Replace(text, pattern, replacement);
+
+                    if (!ReferenceEquals(updatedText, text))
+                    {
+                        text = updatedText;
+                        replaceCount++;
+                        logWriter.WriteLine($"[REWRITE] {key} → {newId} in {Path.GetFileName(file)}");
+                    }
+                }
+            }
+
+            if (replaceCount > 0)
+            {
+                File.WriteAllText(file, text, new UTF8Encoding(false));
             }
         }
     }
-
-    if (replaceCount > 0)
-    {
-        File.WriteAllText(file, text, new System.Text.UTF8Encoding(false));
-    }
 }
-
-
-        }
-    }
-}
-
-
 
 
 
