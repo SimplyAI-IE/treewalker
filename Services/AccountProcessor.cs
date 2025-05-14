@@ -59,14 +59,33 @@ private void LoadTreeAccounts(string treePath)
         string trimmed = line.Trim();
         if (string.IsNullOrWhiteSpace(trimmed) || trimmed[0] != '+') continue;
 
-        var type = trimmed.Substring(0, 3); // includes + prefix
+        string type = trimmed.Substring(1, 2);
         int modIndex = trimmed.IndexOfAny(new[] { '$', '%', '#', '*', ' ' });
-        if (modIndex < 3) continue;
+        if (modIndex < 3) modIndex = trimmed.Length;
 
         string id = trimmed.Substring(3, modIndex - 3);
-        treeAccounts.Add(type.Substring(1) + id);  // Type+Id, e.g. "AnAccountX"
+        string mods = "";
+        while (modIndex < trimmed.Length && "$%#*".Contains(trimmed[modIndex]))
+            mods += trimmed[modIndex++];
+
+        string groupKey = id + mods;
+        treeAccounts.Add(type + id);
+
+        if (triplicates.TryGetValue(groupKey, out var parts))
+        {
+            if (type == "Cf")
+            {
+                if (parts.ContainsKey("Rv")) treeAccounts.Add("Rv" + id);
+                if (parts.ContainsKey("Co")) treeAccounts.Add("Co" + id);
+            }
+            else if (type == "Rv" || type == "Co")
+            {
+                if (parts.ContainsKey("Cf")) treeAccounts.Add("Cf" + id);
+            }
+        }
     }
 }
+
 
 
 
@@ -75,10 +94,13 @@ private void ScanXmoUsage(string dir)
 {
     foreach (var file in Directory.GetFiles(dir, "*.xmo"))
     {
+        Console.WriteLine($"[READ] Scanning {Path.GetFileName(file)}");
+
         XDocument doc;
         try
         {
             doc = XDocument.Load(file);
+            Console.WriteLine($"[READ] Successfully parsed {Path.GetFileName(file)}");
         }
         catch (Exception ex)
         {
