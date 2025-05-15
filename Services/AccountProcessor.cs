@@ -185,9 +185,10 @@ void WriteTreeRelation(string parentLine, string childLine)
             writtenTreeHeaders.Clear();       // 👈 RESET PER OBJECT
             writtenRelations.Clear();         // 👈 RESET PER OBJECT
             string initials = string.Concat(
-                Regex.Split(obj.Replace("-", " "), @"\s+")
-                    .Where(w => !string.IsNullOrWhiteSpace(w))
-                    .Select(w => Regex.Replace(w, @"\.", "").ToUpperInvariant()));
+            Regex.Split(obj.Replace("-", " "), @"\s+")
+                .Where(w => !string.IsNullOrWhiteSpace(w))
+                .Select(w => char.IsDigit(w[0]) ? Regex.Replace(w, @"\.", "") : char.ToUpper(w[0]).ToString()));
+
             string newId = $"Ac{initials}_{accountId}";
             string newLine = "+" + newId + origLine.Substring(key.Length + 1);
 
