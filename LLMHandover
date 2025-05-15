@@ -1,0 +1,97 @@
+AccountTreeApp — LLM Handover Guide
+Welcome, language model. You’re inheriting AccountTreeApp, a CLI tool built in C# (.NET 7.0) to rewrite account references in .xmo object files based on a defined account tree and conflict resolution rules.
+
+This README captures key logic and practical implementation notes not explicitly covered in the specification document.
+
+🗂 File Summary (inferred behavior)
+File	Purpose
+Accounts.xxa	Source of canonical account definitions
+tree.txt	Hierarchy defining parent-child relationships
+.xmo files	Object definitions with <Account><Name>...</Name>
+updatedTree.txt	Output: new clone placement under roots
+createdAccounts.txt	Output: new clones added
+processing.log	Full trace of clones, rewrites, and errors
+
+⚙️ Implementation Notes
+1. treeAccounts Key Matching
+All account matching when scanning .xmo files is case-insensitive.
+
+treeAccounts stores accounts in original casing from tree.txt
+
+Comparison is done via StringComparison.OrdinalIgnoreCase
+
+This ensures <Name>cfInterestCollected</Name> will match CfInterestCollected from the tree.
+
+2. ResolveKey(...)
+Used during .xmo scanning to resolve triplicate account references like:
+
+CfInterestCollected → maps to RvInterestCollected (if in use)
+
+This function always returns the canonical [Type+ID] key used in firstDefinitions.
+
+3. ScanXmoUsage(...)
+Parses .xmo files
+
+Compares each <Account><Name> against treeAccounts (case-insensitive)
+
+Adds matched accounts to usageMap under ResolveKey(...)
+
+This ensures all triplicates land on the same conflict key
+
+4. FixConflicts(...)
+Detects any usageMap entry used in multiple objects
+
+Creates a unique clone per object
+
+Clone format: Ac<Initials>_<AccountID>
+
+Example:
+
+Finance - Cash in Bank → AcFCIB_InterestCollected
+
+Rewrites only the affected .xmo file using Regex.Replace(..., RegexOptions.IgnoreCase)
+
+5. Clone Initial Generation
+Object names are transformed into initials:
+
+"Loan - 2.0" → L20
+
+"Loan - 2.1" → L21
+
+Logic:
+
+csharp
+Copy
+Edit
+string initials = string.Concat(
+    Regex.Split(obj.Replace("-", " "), @"\s+")
+        .Where(w => !string.IsNullOrWhiteSpace(w))
+        .Select(w => char.IsDigit(w[0]) ? Regex.Replace(w, @"\.", "") : char.ToUpper(w[0]).ToString()));
+6. WriteTreeRelation(...)
+Ensures each (parent, child) relationship is written once
+
+Deduplicates using a parentKey + ">" + childKey string
+
+Adds parent lines only once per file
+
+7. Object-to-File Mapping
+During rewriting, .xmo files are located via:
+
+csharp
+Copy
+Edit
+d.Descendants("Name").FirstOrDefault()?.Value?.Trim() == objName
+This means:
+
+<Object><Name> in the XML must match the usageMap key (obj)
+
+Match is case-sensitive, so the <Name> must match the .xmo filename mapping
+
+🔍 Final Behavior Summary
+Any account used by more than one object is cloned per object
+
+Triplicate references are normalized to a canonical form before conflict detection
+
+Each .xmo is rewritten with its unique clone name only where applicable
+
+All outputs are logged, accounted, and deduplicated
