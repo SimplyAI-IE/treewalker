@@ -187,7 +187,7 @@ void WriteTreeRelation(string parentLine, string childLine)
             string initials = string.Concat(
                 Regex.Split(obj.Replace("-", " "), @"\s+")
                     .Where(w => !string.IsNullOrWhiteSpace(w))
-                    .Select(w => char.ToUpper(w[0])));
+                    .Select(w => Regex.Replace(w, @"\.", "").ToUpperInvariant()));
             string newId = $"Ac{initials}_{accountId}";
             string newLine = "+" + newId + origLine.Substring(key.Length + 1);
 
